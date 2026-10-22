@@ -22,3 +22,36 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Python & Backend
+backend/.venv/
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.env
+
+# Large Machine Learning Models
+*.pt
+*.pth
+*.onnx
+*.bin
+backend/models/*.pt
+backend/models/*.pth
+
+# Environment files
+.env.*
+!.env.example
+
+# Python test and coverage artifacts
+.coverage
+htmlcov/
+
+# Local development databases
+*.sqlite3
+*.db
+
+# OS files
+Thumbs.db
