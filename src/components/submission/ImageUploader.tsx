@@ -5,28 +5,38 @@ import {
   FileWarning,
   Sparkles,
   Image as ImageIcon,
+  Loader2,
+  AlertCircle,
+  Eye,
+  CheckCircle2,
+  Info,
 } from 'lucide-react';
 import { Button } from '../common/Button';
+import type { DetectionResponse } from '../../services/api';
 
 interface ImageUploaderProps {
   imageFile: File | null;
   imagePreviewUrl: string | null;
   onImageSelected: (file: File | null, previewUrl: string | null) => void;
   error?: string;
+  isDetecting?: boolean;
+  detectionResult?: DetectionResponse | null;
+  detectionError?: string | null;
+  onRetryDetection?: () => void;
 }
 
 const SAMPLE_DEFECT_IMAGES = [
   {
-    label: 'Crater (Outer Ring Rd)',
-    url: 'https://images.unsplash.com/photo-1515162816999-a0c47dc192f7?auto=format&fit=crop&w=800&q=80',
+    label: 'Crater (Outer Ring Rd) • 2 Potholes',
+    url: '/samples/sample1.jpg',
   },
   {
-    label: 'Surface Breakdown (Indiranagar)',
-    url: 'https://images.unsplash.com/photo-1541888946425-d0fbb186156f?auto=format&fit=crop&w=800&q=80',
+    label: 'Clean Road (Indiranagar) • 0 Potholes',
+    url: '/samples/sample2.jpg',
   },
   {
-    label: 'Sub-base Pit (Silk Board)',
-    url: 'https://images.unsplash.com/photo-1578916171728-46686eac8d58?auto=format&fit=crop&w=800&q=80',
+    label: 'Deep Rut (Silk Board) • 1 Pothole',
+    url: '/samples/sample3.jpg',
   },
 ];
 
@@ -35,9 +45,14 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({
   imagePreviewUrl,
   onImageSelected,
   error,
+  isDetecting = false,
+  detectionResult = null,
+  detectionError = null,
+  onRetryDetection,
 }) => {
   const [dragActive, setDragActive] = useState(false);
   const [validationError, setValidationError] = useState<string | null>(null);
+  const [showAnnotated, setShowAnnotated] = useState(true);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const validateAndProcessFile = (file: File) => {
@@ -58,6 +73,7 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({
 
     const reader = new FileReader();
     reader.onload = (e) => {
+      setShowAnnotated(true);
       onImageSelected(file, e.target?.result as string);
     };
     reader.readAsDataURL(file);
@@ -90,14 +106,29 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({
 
   const handleSelectSample = async (sampleUrl: string) => {
     setValidationError(null);
-    onImageSelected(null, sampleUrl);
+    setShowAnnotated(true);
+    try {
+      const res = await fetch(sampleUrl);
+      const blob = await res.blob();
+      const filename = sampleUrl.split('/').pop() || 'sample.jpg';
+      const file = new File([blob], filename, { type: blob.type || 'image/jpeg' });
+      onImageSelected(file, sampleUrl);
+    } catch {
+      onImageSelected(null, sampleUrl);
+    }
   };
 
   const handleClear = () => {
     if (inputRef.current) inputRef.current.value = '';
     setValidationError(null);
+    setShowAnnotated(true);
     onImageSelected(null, null);
   };
+
+  const activeDisplayUrl =
+    showAnnotated && detectionResult?.annotated_image
+      ? detectionResult.annotated_image
+      : imagePreviewUrl;
 
   return (
     <div className="space-y-3">
@@ -110,43 +141,170 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({
 
       {imagePreviewUrl ? (
         <div className="space-y-3">
-          <div className="relative rounded-xl overflow-hidden border border-slate-300 bg-slate-900 aspect-video max-h-72 flex items-center justify-center">
-            <img
-              src={imagePreviewUrl}
-              alt="Uploaded road defect preview"
-              className="w-full h-full object-cover"
-            />
+          <div className="relative rounded-xl overflow-hidden border border-slate-300 bg-slate-900 aspect-video max-h-80 flex items-center justify-center">
+            {activeDisplayUrl && (
+              <img
+                src={activeDisplayUrl}
+                alt="Road defect evidence"
+                className="w-full h-full object-cover transition-opacity duration-200"
+              />
+            )}
+
             <button
               type="button"
               onClick={handleClear}
               aria-label="Remove image"
-              className="absolute top-3 right-3 p-1.5 rounded-full bg-slate-900/80 text-white hover:bg-red-600 transition-colors shadow-md"
+              className="absolute top-3 right-3 p-1.5 rounded-full bg-slate-900/80 text-white hover:bg-red-600 transition-colors shadow-md z-10"
             >
               <X className="h-4 w-4" />
             </button>
 
-            {/* Simulated Edge Detection Overlay */}
-            <div className="absolute bottom-3 left-3 right-3 bg-slate-900/90 backdrop-blur-md rounded-lg p-3 text-white border border-slate-700 flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Sparkles className="h-4 w-4 text-amber-400 animate-pulse" />
-                <div>
-                  <p className="text-xs font-bold text-amber-300">
-                    Simulated AI Detection: Severe Cavity
-                  </p>
-                  <p className="text-[10px] text-slate-300">
-                    Est. Confidence 94.6% • Depth ~12cm • Simulated for demo
-                  </p>
+            {/* Toggle Annotated vs Original if detections exist */}
+            {detectionResult?.annotated_image && (
+              <div className="absolute top-3 left-3 flex items-center gap-1.5 bg-slate-900/85 backdrop-blur-md p-1 rounded-lg border border-slate-700 z-10">
+                <button
+                  type="button"
+                  onClick={() => setShowAnnotated(true)}
+                  className={`text-[11px] font-medium px-2.5 py-1 rounded transition-colors ${
+                    showAnnotated
+                      ? 'bg-amber-500 text-slate-950 font-bold shadow-xs'
+                      : 'text-slate-300 hover:text-white'
+                  }`}
+                >
+                  YOLO Bounding Boxes
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowAnnotated(false)}
+                  className={`text-[11px] font-medium px-2.5 py-1 rounded transition-colors ${
+                    !showAnnotated
+                      ? 'bg-amber-500 text-slate-950 font-bold shadow-xs'
+                      : 'text-slate-300 hover:text-white'
+                  }`}
+                >
+                  Original Photo
+                </button>
+              </div>
+            )}
+
+            {/* In-Flight Detecting Overlay */}
+            {isDetecting && (
+              <div className="absolute inset-0 bg-slate-950/75 backdrop-blur-xs flex flex-col items-center justify-center text-white z-20 animate-fade-in">
+                <Loader2 className="h-8 w-8 text-amber-400 animate-spin mb-2" />
+                <p className="text-sm font-bold text-slate-100">Running Real YOLOv8 AI Inference...</p>
+                <p className="text-xs text-slate-400 mt-0.5">Analyzing road surface for cavitation & bounding boxes</p>
+              </div>
+            )}
+
+            {/* Real AI Inference Outcome Badge */}
+            {!isDetecting && detectionResult && (
+              <div className="absolute bottom-3 left-3 right-3 bg-slate-950/90 backdrop-blur-md rounded-lg p-3 text-white border border-slate-700 flex flex-wrap items-center justify-between gap-2 z-10">
+                <div className="flex items-center gap-2.5">
+                  {detectionResult.potholes_detected > 0 ? (
+                    <div className="h-7 w-7 rounded-md bg-amber-500/20 text-amber-400 flex items-center justify-center shrink-0">
+                      <Sparkles className="h-4 w-4" />
+                    </div>
+                  ) : (
+                    <div className="h-7 w-7 rounded-md bg-blue-500/20 text-blue-400 flex items-center justify-center shrink-0">
+                      <CheckCircle2 className="h-4 w-4" />
+                    </div>
+                  )}
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <p className="text-xs font-bold text-white">
+                        {detectionResult.potholes_detected > 0
+                          ? `Real AI Inference: ${detectionResult.potholes_detected} Pothole${detectionResult.potholes_detected > 1 ? 's' : ''} Detected`
+                          : '0 Potholes Detected by YOLOv8'}
+                      </p>
+                      <span className="text-[10px] font-mono bg-emerald-500/20 text-emerald-300 px-2 py-0.5 rounded border border-emerald-500/30">
+                        REAL MODEL
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-300 mt-0.5">
+                      {detectionResult.potholes_detected > 0
+                        ? `Peak Confidence: ${(detectionResult.highest_confidence * 100).toFixed(1)}% (model score) • Latency: ${detectionResult.inference_time_ms}ms`
+                        : `No road cavitation meeting 0.25 confidence threshold • Latency: ${detectionResult.inference_time_ms}ms`}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="text-right">
+                  <span className="text-[10px] text-slate-400 block font-mono">
+                    Model: {detectionResult.model_name}
+                  </span>
+                  <span className="text-[10px] text-amber-300 font-semibold block">
+                    Depth Not Estimated (2D RGB)
+                  </span>
                 </div>
               </div>
-              <span className="text-[10px] font-mono bg-amber-500/20 text-amber-300 px-2 py-0.5 rounded border border-amber-500/30">
-                EDGE AI
-              </span>
-            </div>
+            )}
+
+            {/* Inference Error Notification */}
+            {!isDetecting && detectionError && (
+              <div className="absolute bottom-3 left-3 right-3 bg-red-950/90 backdrop-blur-md rounded-lg p-3 text-white border border-red-800 flex items-center justify-between gap-2 z-10">
+                <div className="flex items-center gap-2">
+                  <AlertCircle className="h-5 w-5 text-red-400 shrink-0" />
+                  <div>
+                    <p className="text-xs font-bold text-red-200">Backend AI Inference Unavailable</p>
+                    <p className="text-[10px] text-red-300 line-clamp-1">{detectionError}</p>
+                  </div>
+                </div>
+                {onRetryDetection && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={onRetryDetection}
+                    className="text-xs py-1 px-2.5 bg-red-900/60 border-red-700 text-red-100 hover:bg-red-800"
+                  >
+                    Retry Scan
+                  </Button>
+                )}
+              </div>
+            )}
           </div>
+
+          {/* Detections Detail Strip if detected */}
+          {detectionResult && detectionResult.detections.length > 0 && (
+            <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg text-xs space-y-1.5">
+              <div className="flex items-center justify-between">
+                <span className="font-semibold text-slate-700 flex items-center gap-1.5">
+                  <Eye className="h-3.5 w-3.5 text-slate-500" />
+                  Bounding Box Coordinates & Class Confidence (Model Outputs):
+                </span>
+                <span className="text-[11px] text-slate-500">
+                  Image size: {detectionResult.image_width} × {detectionResult.image_height} px
+                </span>
+              </div>
+              <div className="flex flex-wrap gap-2 pt-1">
+                {detectionResult.detections.map((box, idx) => (
+                  <span
+                    key={idx}
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-white border border-slate-200 text-slate-800 font-mono text-[11px]"
+                  >
+                    <span className="h-2 w-2 rounded-full bg-red-500" />
+                    <strong>Pothole #{idx + 1}:</strong>
+                    <span>{(box.confidence * 100).toFixed(1)}% conf</span>
+                    <span className="text-slate-400">
+                      [{box.x1}, {box.y1}, {box.x2}, {box.y2}]
+                    </span>
+                  </span>
+                ))}
+              </div>
+              <p className="text-[10px] text-slate-500 pt-1 border-t border-slate-200/60 flex items-center gap-1">
+                <Info className="h-3 w-3 shrink-0" />
+                <span>
+                  Confidence scores represent raw neural network outputs, not calibrated probabilities. Physical crater depth cannot be measured from a 2D photograph.
+                </span>
+              </p>
+            </div>
+          )}
 
           <div className="flex items-center justify-between text-xs text-slate-500">
             <span>
-              {imageFile ? `${imageFile.name} (${(imageFile.size / 1024 / 1024).toFixed(2)} MB)` : 'Preset Demo Evidence Image'}
+              {imageFile
+                ? `${imageFile.name} (${(imageFile.size / 1024 / 1024).toFixed(2)} MB)`
+                : 'Preset Demo Evidence Image'}
             </span>
             <Button
               type="button"
@@ -188,7 +346,7 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({
             Click to upload or drag & drop road photograph
           </p>
           <p className="text-xs text-slate-500 mt-1 text-center">
-            High quality road surface photos enable automated severity scoring
+            Upload road surface photos for real-time YOLOv8 object detection and bounding box extraction
           </p>
 
           {/* Quick select demo presets */}
@@ -197,7 +355,7 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({
             onClick={(e) => e.stopPropagation()}
           >
             <span className="text-[11px] text-slate-400 font-medium block mb-2">
-              Or pick a sample Bengaluru road defect image:
+              Or pick a sample Bengaluru road photograph for real AI detection:
             </span>
             <div className="flex flex-wrap justify-center gap-2">
               {SAMPLE_DEFECT_IMAGES.map((sample, idx) => (

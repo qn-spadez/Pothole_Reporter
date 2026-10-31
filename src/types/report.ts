@@ -18,12 +18,37 @@ export type BBMPZone =
   | 'Yelahanka'
   | 'Dasarahalli';
 
+export interface BoundingBox {
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+  confidence: number;
+  class_id: number;
+  class_name: string;
+}
+
+export interface RealAIDetection {
+  isRealInference: true;
+  potholesDetected: number;
+  detections: BoundingBox[];
+  annotatedImageUrl?: string;
+  imageWidth: number;
+  imageHeight: number;
+  inferenceTimeMs: number;
+  modelName: string;
+  highestConfidence: number; // 0.0 - 1.0
+  suggestedPriority: ReportPriority;
+  notice: string;
+}
+
 export interface SimulatedAIDetection {
+  isRealInference?: false;
   potholeDetected: boolean;
   confidenceScore: number; // 0 - 100
   estimatedSeverity: ReportPriority;
-  estimatedDepthCm: number;
-  estimatedSurfaceAreaSqM: number;
+  estimatedDepthCm?: number;
+  estimatedSurfaceAreaSqM?: number;
   detectedFeatures: string[];
 }
 
@@ -42,7 +67,8 @@ export interface PotholeReport {
   reporterContact: string;
   createdAt: string;
   updatedAt: string;
-  simulatedAiDetection: SimulatedAIDetection;
+  simulatedAiDetection?: SimulatedAIDetection;
+  realAiDetection?: RealAIDetection;
   duplicateOfId?: string; // If merged into another report
   duplicateCount?: number;
 }

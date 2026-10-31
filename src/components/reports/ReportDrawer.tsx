@@ -10,6 +10,8 @@ import {
   Cpu,
   Layers,
   CheckCircle2,
+  Sparkles,
+  Eye,
 } from 'lucide-react';
 import type { PotholeReport, ReportStatus, ReportPriority } from '../../types/report';
 import { StatusBadge, PriorityBadge, ZoneBadge } from '../common/Badge';
@@ -25,6 +27,7 @@ interface ReportDrawerProps {
 export const ReportDrawer: React.FC<ReportDrawerProps> = ({ report, onClose }) => {
   const { updateReportStatus, updateReportPriority, showToast } = useReports();
   const [copied, setCopied] = useState(false);
+  const [showAnnotatedDrawer, setShowAnnotatedDrawer] = useState(true);
 
   if (!report) return null;
 
@@ -36,6 +39,11 @@ export const ReportDrawer: React.FC<ReportDrawerProps> = ({ report, onClose }) =
   };
 
   const googleMapsUrl = `https://www.google.com/maps/search/?api=1&query=${report.latitude},${report.longitude}`;
+
+  const currentDisplayImage =
+    showAnnotatedDrawer && report.realAiDetection?.annotatedImageUrl
+      ? report.realAiDetection.annotatedImageUrl
+      : report.imageUrl;
 
   return (
     <div
@@ -79,12 +87,42 @@ export const ReportDrawer: React.FC<ReportDrawerProps> = ({ report, onClose }) =
         <div className="flex-1 overflow-y-auto p-5 space-y-6">
           {/* Image Preview */}
           <div className="space-y-1.5">
-            <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
-              Defect Photo Evidence
-            </span>
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                Defect Photo Evidence
+              </span>
+              {report.realAiDetection?.annotatedImageUrl && (
+                <div className="flex items-center gap-1 bg-slate-100 p-0.5 rounded-lg border border-slate-200">
+                  <button
+                    type="button"
+                    onClick={() => setShowAnnotatedDrawer(true)}
+                    className={`px-2 py-0.5 text-[11px] font-semibold rounded flex items-center gap-1 transition-colors ${
+                      showAnnotatedDrawer
+                        ? 'bg-slate-900 text-white shadow-xs'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    <Sparkles className="h-3 w-3" />
+                    AI Annotated
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowAnnotatedDrawer(false)}
+                    className={`px-2 py-0.5 text-[11px] font-semibold rounded flex items-center gap-1 transition-colors ${
+                      !showAnnotatedDrawer
+                        ? 'bg-slate-900 text-white shadow-xs'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    <Eye className="h-3 w-3" />
+                    Original
+                  </button>
+                </div>
+              )}
+            </div>
             <div className="relative rounded-xl overflow-hidden border border-slate-200 bg-slate-950 aspect-video group">
               <img
-                src={report.imageUrl}
+                src={currentDisplayImage}
                 alt={`Pothole defect on ${report.roadName}`}
                 className="w-full h-full object-cover"
                 onError={(e) => {
@@ -94,8 +132,19 @@ export const ReportDrawer: React.FC<ReportDrawerProps> = ({ report, onClose }) =
                 }}
               />
               <div className="absolute bottom-2 left-2 px-2.5 py-1 rounded bg-black/75 backdrop-blur-xs text-[11px] text-white font-mono flex items-center gap-1.5">
-                <Cpu className="h-3 w-3 text-amber-400" />
-                <span>Simulated AI Analysis Ready</span>
+                {report.realAiDetection ? (
+                  <>
+                    <Sparkles className="h-3 w-3 text-emerald-400" />
+                    <span>
+                      Real YOLOv8 Inference ({report.realAiDetection.potholesDetected} detected)
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    <Cpu className="h-3 w-3 text-amber-400" />
+                    <span>Simulated AI Analysis Ready</span>
+                  </>
+                )}
               </div>
             </div>
           </div>
@@ -110,65 +159,144 @@ export const ReportDrawer: React.FC<ReportDrawerProps> = ({ report, onClose }) =
             </p>
           </div>
 
-          {/* Simulated Edge AI Metrics */}
-          <div className="space-y-2 rounded-xl border border-amber-200/80 bg-amber-50/40 p-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Cpu className="h-4 w-4 text-amber-600" />
-                <h4 className="text-xs font-bold text-amber-900 uppercase tracking-wider">
-                  Simulated AI Triage Assessment
-                </h4>
+          {/* AI Assessment Metrics: Real vs Simulated */}
+          {report.realAiDetection ? (
+            <div className="space-y-2 rounded-xl border border-emerald-200 bg-emerald-50/40 p-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Sparkles className="h-4 w-4 text-emerald-600" />
+                  <h4 className="text-xs font-bold text-emerald-950 uppercase tracking-wider">
+                    Verified AI Object Detection (YOLOv8)
+                  </h4>
+                </div>
+                <span className="text-[10px] font-mono text-emerald-800 bg-emerald-100 border border-emerald-200 px-2 py-0.5 rounded font-semibold">
+                  REAL INFERENCE
+                </span>
               </div>
-              <span className="text-[10px] font-mono text-amber-700 bg-amber-100 px-2 py-0.5 rounded">
-                SIMULATED DATA
-              </span>
-            </div>
 
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 pt-2">
-              <div className="bg-white p-2.5 rounded-lg border border-amber-200/50">
-                <span className="text-[10px] text-slate-400 font-medium block">
-                  Model Confidence
-                </span>
-                <span className="text-sm font-extrabold text-slate-900">
-                  {report.simulatedAiDetection.confidenceScore.toFixed(1)}%
-                </span>
-              </div>
-              <div className="bg-white p-2.5 rounded-lg border border-amber-200/50">
-                <span className="text-[10px] text-slate-400 font-medium block">
-                  Est. Depth
-                </span>
-                <span className="text-sm font-extrabold text-slate-900">
-                  {report.simulatedAiDetection.estimatedDepthCm} cm
-                </span>
-              </div>
-              <div className="bg-white p-2.5 rounded-lg border border-amber-200/50">
-                <span className="text-[10px] text-slate-400 font-medium block">
-                  Est. Surface Area
-                </span>
-                <span className="text-sm font-extrabold text-slate-900">
-                  {report.simulatedAiDetection.estimatedSurfaceAreaSqM} m²
-                </span>
-              </div>
-            </div>
-
-            {report.simulatedAiDetection.detectedFeatures.length > 0 && (
-              <div className="pt-2">
-                <span className="text-[11px] font-semibold text-slate-600">
-                  Detected Geometric Features:
-                </span>
-                <div className="flex flex-wrap gap-1.5 mt-1">
-                  {report.simulatedAiDetection.detectedFeatures.map((feat, i) => (
-                    <span
-                      key={i}
-                      className="text-[10px] bg-white border border-amber-200 px-2 py-0.5 rounded text-amber-900 font-medium"
-                    >
-                      {feat}
-                    </span>
-                  ))}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 pt-2">
+                <div className="bg-white p-2.5 rounded-lg border border-emerald-200/60">
+                  <span className="text-[10px] text-slate-500 font-medium block">
+                    Potholes Detected
+                  </span>
+                  <span className="text-base font-extrabold text-slate-900">
+                    {report.realAiDetection.potholesDetected}
+                  </span>
+                </div>
+                <div className="bg-white p-2.5 rounded-lg border border-emerald-200/60">
+                  <span className="text-[10px] text-slate-500 font-medium block">
+                    Top Confidence
+                  </span>
+                  <span className="text-base font-extrabold text-emerald-700">
+                    {(report.realAiDetection.highestConfidence * 100).toFixed(1)}%
+                  </span>
+                </div>
+                <div className="bg-white p-2.5 rounded-lg border border-emerald-200/60">
+                  <span className="text-[10px] text-slate-500 font-medium block">
+                    Inference Time
+                  </span>
+                  <span className="text-base font-extrabold text-slate-900">
+                    {report.realAiDetection.inferenceTimeMs.toFixed(0)} ms
+                  </span>
+                </div>
+                <div className="bg-white p-2.5 rounded-lg border border-emerald-200/60">
+                  <span className="text-[10px] text-slate-500 font-medium block">
+                    Resolution
+                  </span>
+                  <span className="text-xs font-extrabold text-slate-900 pt-0.5 block">
+                    {report.realAiDetection.imageWidth}×{report.realAiDetection.imageHeight}
+                  </span>
                 </div>
               </div>
-            )}
-          </div>
+
+              {/* Bounding box details */}
+              {report.realAiDetection.detections.length > 0 && (
+                <div className="pt-2">
+                  <span className="text-[11px] font-semibold text-slate-700">
+                    Bounding Box Coordinates (x1, y1, x2, y2):
+                  </span>
+                  <div className="flex flex-wrap gap-1.5 mt-1">
+                    {report.realAiDetection.detections.map((det, i) => (
+                      <span
+                        key={i}
+                        className="text-[10px] bg-white border border-emerald-200 px-2 py-0.5 rounded text-emerald-900 font-mono"
+                      >
+                        #{i + 1}: [{det.x1.toFixed(0)}, {det.y1.toFixed(0)}, {det.x2.toFixed(0)}, {det.y2.toFixed(0)}] ({Math.round(det.confidence * 100)}%)
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <p className="text-[11px] text-slate-600 bg-white/80 p-2.5 rounded-lg border border-emerald-100 leading-normal">
+                <span className="font-semibold text-emerald-900">Model:</span>{' '}
+                {report.realAiDetection.modelName}. {report.realAiDetection.notice}
+              </p>
+            </div>
+          ) : report.simulatedAiDetection ? (
+            <div className="space-y-2 rounded-xl border border-amber-200/80 bg-amber-50/40 p-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Cpu className="h-4 w-4 text-amber-600" />
+                  <h4 className="text-xs font-bold text-amber-900 uppercase tracking-wider">
+                    Simulated AI Triage Assessment
+                  </h4>
+                </div>
+                <span className="text-[10px] font-mono text-amber-700 bg-amber-100 px-2 py-0.5 rounded">
+                  DEMO DATA (PHASE 1)
+                </span>
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 pt-2">
+                <div className="bg-white p-2.5 rounded-lg border border-amber-200/50">
+                  <span className="text-[10px] text-slate-400 font-medium block">
+                    Model Confidence
+                  </span>
+                  <span className="text-sm font-extrabold text-slate-900">
+                    {report.simulatedAiDetection.confidenceScore.toFixed(1)}%
+                  </span>
+                </div>
+                <div className="bg-white p-2.5 rounded-lg border border-amber-200/50">
+                  <span className="text-[10px] text-slate-400 font-medium block">
+                    Simulated Depth (Uncalibrated)
+                  </span>
+                  <span className="text-sm font-extrabold text-slate-900">
+                    {report.simulatedAiDetection.estimatedDepthCm} cm
+                  </span>
+                </div>
+                <div className="bg-white p-2.5 rounded-lg border border-amber-200/50">
+                  <span className="text-[10px] text-slate-400 font-medium block">
+                    Est. Surface Area
+                  </span>
+                  <span className="text-sm font-extrabold text-slate-900">
+                    {report.simulatedAiDetection.estimatedSurfaceAreaSqM} m²
+                  </span>
+                </div>
+              </div>
+
+              {report.simulatedAiDetection.detectedFeatures.length > 0 && (
+                <div className="pt-2">
+                  <span className="text-[11px] font-semibold text-slate-600">
+                    Detected Geometric Features:
+                  </span>
+                  <div className="flex flex-wrap gap-1.5 mt-1">
+                    {report.simulatedAiDetection.detectedFeatures.map((feat, i) => (
+                      <span
+                        key={i}
+                        className="text-[10px] bg-white border border-amber-200 px-2 py-0.5 rounded text-amber-900 font-medium"
+                      >
+                        {feat}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <p className="text-[11px] text-amber-800 bg-amber-100/60 p-2 rounded border border-amber-200">
+                Notice: Physical depth cannot be measured from single 2D images. Values are simulated for demo interface testing.
+              </p>
+            </div>
+          ) : null}
 
           {/* Location & GPS Info */}
           <div className="space-y-3">

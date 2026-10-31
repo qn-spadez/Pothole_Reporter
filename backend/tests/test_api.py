@@ -100,3 +100,36 @@ def test_real_pothole_inference():
     assert "inference_time_ms" in data
     assert data["image_width"] == 400
     assert "pothole" in data["model_name"].lower()
+
+
+def test_real_pothole_image_with_detections_and_annotated_output():
+    """Verify real inference on an actual pothole photograph returns bounding boxes and annotated image."""
+    import os
+
+    # Look for sample1.jpg in public/samples
+    sample_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../public/samples/sample1.jpg"))
+    assert os.path.exists(sample_path), f"Sample image not found at {sample_path}"
+
+    with open(sample_path, "rb") as f:
+        response = client.post(
+            "/api/detect",
+            files={"file": ("sample1.jpg", f, "image/jpeg")},
+        )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["success"] is True
+    assert data["potholes_detected"] >= 1
+    assert len(data["detections"]) >= 1
+    assert data["annotated_image"] is not None
+    assert data["annotated_image"].startswith("data:image/jpeg;base64,")
+    assert data["highest_confidence"] > 0.5
+    assert data["suggested_priority"] in ["high", "critical"]
+    assert "Depth is not estimated" in data["notice"]
+
+    # Verify bounding box coordinates are numeric and valid
+    box = data["detections"][0]
+    assert box["x1"] >= 0 and box["y1"] >= 0
+    assert box["x2"] > box["x1"] and box["y2"] > box["y1"]
+    assert box["class_name"] == "Pothole"
+    assert 0.0 <= box["confidence"] <= 1.0

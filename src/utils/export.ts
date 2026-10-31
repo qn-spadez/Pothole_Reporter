@@ -35,8 +35,13 @@ export function exportReportsAsGeoJSON(reports: PotholeReport[], filename = 'ben
         wardNumber: r.wardNumber,
         status: r.status,
         priority: r.priority,
-        depthCm: r.simulatedAiDetection.estimatedDepthCm,
-        surfaceAreaSqM: r.simulatedAiDetection.estimatedSurfaceAreaSqM,
+        aiInferenceType: r.realAiDetection ? 'real_yolov8' : (r.simulatedAiDetection ? 'simulated_demo' : 'none'),
+        potholesDetected: r.realAiDetection?.potholesDetected ?? (r.simulatedAiDetection?.potholeDetected ? 1 : 0),
+        topConfidence: r.realAiDetection
+          ? Math.round(r.realAiDetection.highestConfidence * 100)
+          : (r.simulatedAiDetection?.confidenceScore ?? null),
+        depthCm: r.simulatedAiDetection?.estimatedDepthCm ?? null,
+        surfaceAreaSqM: r.simulatedAiDetection?.estimatedSurfaceAreaSqM ?? null,
         reportedAt: r.createdAt,
       },
     })),

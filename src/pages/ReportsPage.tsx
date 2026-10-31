@@ -69,10 +69,9 @@ export const ReportsPage: React.FC = () => {
           return priorityWeights[b.priority] - priorityWeights[a.priority];
         }
         if (filters.sortBy === 'severity') {
-          return (
-            b.simulatedAiDetection.estimatedDepthCm -
-            a.simulatedAiDetection.estimatedDepthCm
-          );
+          const depthB = b.simulatedAiDetection?.estimatedDepthCm ?? (b.realAiDetection ? (b.realAiDetection.potholesDetected * 5) : 0);
+          const depthA = a.simulatedAiDetection?.estimatedDepthCm ?? (a.realAiDetection ? (a.realAiDetection.potholesDetected * 5) : 0);
+          return depthB - depthA;
         }
         return 0;
       });

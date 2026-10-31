@@ -4,21 +4,36 @@ A modern, cloud-based pothole detection and duplicate-aware civic reporting dash
 
 ---
 
-## 🚀 Quick Start (Run Locally)
+## 🚀 Quick Start (Running Frontend and Backend)
 
-Make sure you have Node.js (v18+) and npm installed.
+To experience real AI pothole object detection inference, run both the FastAPI Python backend and the React frontend in separate terminals.
+
+### Terminal 1: Python FastAPI AI Backend
 
 ```bash
-# 1. Install dependencies (if not already installed)
-npm install
+cd backend
 
-# 2. Run the development server
+# On Windows PowerShell:
+.\.venv\Scripts\Activate.ps1
+# On Linux/macOS:
+# source .venv/bin/activate
+
+# Start Uvicorn API server
+uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
+```
+- API Docs: `http://localhost:8000/docs`
+- Health check: `http://localhost:8000/api/health`
+
+### Terminal 2: React Frontend
+
+```bash
+# In the project root:
 npm run dev
 ```
+- App UI: `http://localhost:5173/`
+- Vite automatically proxies `/api` calls to `http://127.0.0.1:8000`.
 
-The application will start immediately at `http://localhost:5173/`.
-
-To test the production build:
+To test the frontend production build:
 ```bash
 npm run build
 npm run preview
@@ -127,8 +142,8 @@ src/
 
 ---
 
-## 🔒 Scope Boundaries & Future Phases
+## 🔒 Project Status & Scope Boundaries
 
-- **Phase 1 (Current):** Pure frontend with deterministic client-side demo data, local storage persistence, responsive UI, Leaflet GIS map, and simulated AI detection.
-- **Phase 2 (Upcoming):** Python FastAPI backend for server-side persistence, image processing, and real computer vision pothole segmentation.
-- **Phase 3 (Upcoming):** Supabase integration for authentication, PostGIS spatial queries, and S3-compatible cloud storage.
+- **Phase 1 (Complete):** Modern civic-tech dashboard frontend with deterministic client-side demo data, local storage persistence, responsive UI, Leaflet GIS map with BBMP zones, and duplicate review triage.
+- **Phase 2 (Complete):** Python FastAPI backend with real YOLOv8 object detection inference (`Samdutse/pothole-yolov8`), verified bounding box coordinates, model confidence outputs, annotated image rendering, and robust error handling without synthetic depth hallucination.
+- **Phase 3 (Upcoming):** Supabase integration for multi-user authentication, PostGIS spatial queries, and S3-compatible cloud storage.

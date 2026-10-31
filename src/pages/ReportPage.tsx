@@ -4,19 +4,20 @@ import {
   Send,
   Info,
   CheckCircle2,
-  Cpu,
   ArrowLeft,
+  Sparkles,
 } from 'lucide-react';
 import { useReports } from '../context/ReportContext';
 import { ImageUploader } from '../components/submission/ImageUploader';
 import { LocationPicker } from '../components/submission/LocationPicker';
 import { Button } from '../components/common/Button';
 import { Card, CardHeader, CardTitle, CardContent } from '../components/common/Card';
-import type { BBMPZone, ReportPriority } from '../types/report';
+import type { BBMPZone, ReportPriority, RealAIDetection } from '../types/report';
+import { detectPotholes, type DetectionResponse } from '../services/api';
 
 export const ReportPage: React.FC = () => {
   const navigate = useNavigate();
-  const { addReport } = useReports();
+  const { addReport, showToast } = useReports();
 
   // Form State
   const [imageFile, setImageFile] = useState<File | null>(null);
@@ -31,13 +32,19 @@ export const ReportPage: React.FC = () => {
   const [reporterContact, setReporterContact] = useState('');
   const [priority, setPriority] = useState<ReportPriority>('high');
 
-  // Validation State
+  // Real AI Detection State
+  const [isDetecting, setIsDetecting] = useState(false);
+  const [detectionResult, setDetectionResult] = useState<DetectionResponse | null>(null);
+  const [detectionError, setDetectionError] = useState<string | null>(null);
+
+  // Validation & Submission State
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submissionSuccess, setSubmissionSuccess] = useState<{
     id: string;
     roadName: string;
     priority: ReportPriority;
+    realAiDetection?: RealAIDetection;
   } | null>(null);
 
   const zones: BBMPZone[] = [
@@ -51,15 +58,67 @@ export const ReportPage: React.FC = () => {
     'Dasarahalli',
   ];
 
+  const runDetection = async (file: File | Blob) => {
+    setIsDetecting(true);
+    setDetectionError(null);
+
+    try {
+      const result = await detectPotholes(file);
+      setDetectionResult(result);
+
+      if (result.potholes_detected > 0) {
+        // Automatically suggest priority based on real YOLO detection
+        setPriority(result.suggested_priority);
+        showToast(
+          'success',
+          'YOLOv8 Detection Complete',
+          `Found ${result.potholes_detected} pothole(s) with peak model confidence ${(result.highest_confidence * 100).toFixed(1)}%.`
+        );
+      } else {
+        showToast(
+          'info',
+          'No Potholes Detected',
+          'The model found 0 potholes meeting the 0.25 confidence threshold in this image.'
+        );
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Detection failed';
+      setDetectionError(msg);
+      setDetectionResult(null);
+      showToast(
+        'error',
+        'AI Detection Unavailable',
+        `${msg} (No artificial score will be fabricated)`
+      );
+    } finally {
+      setIsDetecting(false);
+    }
+  };
+
   const handleImageSelected = (file: File | null, previewUrl: string | null) => {
     setImageFile(file);
     setImagePreviewUrl(previewUrl);
+
     if (previewUrl && errors.image) {
       setErrors((prev) => {
         const copy = { ...prev };
         delete copy.image;
         return copy;
       });
+    }
+
+    if (file) {
+      // Trigger real AI detection against the backend
+      void runDetection(file);
+    } else {
+      setDetectionResult(null);
+      setDetectionError(null);
+    }
+  };
+
+  const handleRetryDetection = () => {
+    if (imageFile) {
+      void runDetection(imageFile);
     }
   };
 
@@ -122,8 +181,24 @@ export const ReportPage: React.FC = () => {
 
     setIsSubmitting(true);
 
-    // Simulate short network delay for realistic feel
     setTimeout(() => {
+      // Build real AI detection payload if real detection was run
+      const realAiPayload: RealAIDetection | undefined = detectionResult
+        ? {
+            isRealInference: true,
+            potholesDetected: detectionResult.potholes_detected,
+            detections: detectionResult.detections,
+            annotatedImageUrl: detectionResult.annotated_image || undefined,
+            imageWidth: detectionResult.image_width,
+            imageHeight: detectionResult.image_height,
+            inferenceTimeMs: detectionResult.inference_time_ms,
+            modelName: detectionResult.model_name,
+            highestConfidence: detectionResult.highest_confidence,
+            suggestedPriority: detectionResult.suggested_priority,
+            notice: detectionResult.notice,
+          }
+        : undefined;
+
       const newReport = addReport({
         roadName: roadName.trim() || 'Unspecified Bengaluru Corridor',
         zone,
@@ -135,17 +210,10 @@ export const ReportPage: React.FC = () => {
         longitude: parseFloat(longitude),
         imageUrl:
           imagePreviewUrl ||
-          'https://images.unsplash.com/photo-1515162816999-a0c47dc192f7?auto=format&fit=crop&w=800&q=80',
+          '/samples/sample1.jpg',
         reporterName: reporterName.trim() || 'Anonymous Citizen',
         reporterContact: reporterContact.trim() || '+91 Unspecified',
-        simulatedAiDetection: {
-          potholeDetected: true,
-          confidenceScore: 93.8,
-          estimatedSeverity: priority,
-          estimatedDepthCm: priority === 'critical' ? 14.8 : priority === 'high' ? 11.2 : 6.5,
-          estimatedSurfaceAreaSqM: priority === 'critical' ? 0.95 : 0.6,
-          detectedFeatures: ['Asphalt rim cavitation', 'Simulated road defect feature'],
-        },
+        realAiDetection: realAiPayload,
       });
 
       setIsSubmitting(false);
@@ -153,8 +221,9 @@ export const ReportPage: React.FC = () => {
         id: newReport.id,
         roadName: newReport.roadName,
         priority: newReport.priority,
+        realAiDetection: realAiPayload,
       });
-    }, 600);
+    }, 400);
   };
 
   const handleResetForAnother = () => {
@@ -164,6 +233,8 @@ export const ReportPage: React.FC = () => {
     setLatitude('');
     setLongitude('');
     setDescription('');
+    setDetectionResult(null);
+    setDetectionError(null);
     setSubmissionSuccess(null);
     setErrors({});
   };
@@ -189,26 +260,62 @@ export const ReportPage: React.FC = () => {
             </p>
           </div>
 
-          {/* Simulated Edge AI Notification */}
-          <div className="p-4 rounded-xl bg-amber-50 border border-amber-200 text-left max-w-md mx-auto text-xs space-y-2">
-            <div className="flex items-center gap-2">
-              <Cpu className="h-4 w-4 text-amber-600" />
-              <span className="font-bold text-amber-900">
-                Simulated AI Triage Assessment
-              </span>
+          {/* Real AI Inference Breakdown */}
+          {submissionSuccess.realAiDetection ? (
+            <div className="p-4 rounded-xl bg-slate-900 text-white text-left max-w-lg mx-auto text-xs space-y-3 shadow-inner">
+              <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+                <div className="flex items-center gap-2">
+                  <Sparkles className="h-4 w-4 text-amber-400" />
+                  <span className="font-bold text-amber-300">
+                    Verified YOLOv8 Inference Results
+                  </span>
+                </div>
+                <span className="text-[10px] font-mono bg-emerald-500/20 text-emerald-300 px-2 py-0.5 rounded border border-emerald-500/30">
+                  REAL AI INFERENCE
+                </span>
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 pt-1 text-slate-300">
+                <div className="bg-slate-800/80 p-2 rounded">
+                  <span className="text-[10px] text-slate-400 block">Potholes Detected</span>
+                  <span className="text-sm font-bold text-white">
+                    {submissionSuccess.realAiDetection.potholesDetected}
+                  </span>
+                </div>
+                <div className="bg-slate-800/80 p-2 rounded">
+                  <span className="text-[10px] text-slate-400 block">Peak Confidence</span>
+                  <span className="text-sm font-bold text-amber-400">
+                    {(submissionSuccess.realAiDetection.highestConfidence * 100).toFixed(1)}%
+                  </span>
+                </div>
+                <div className="bg-slate-800/80 p-2 rounded">
+                  <span className="text-[10px] text-slate-400 block">Inference Time</span>
+                  <span className="text-sm font-bold text-white">
+                    {submissionSuccess.realAiDetection.inferenceTimeMs} ms
+                  </span>
+                </div>
+              </div>
+
+              <div className="text-[11px] text-slate-400 border-t border-slate-800/80 pt-2 space-y-1">
+                <p>
+                  <strong>Model Checkpoint:</strong> {submissionSuccess.realAiDetection.modelName} (YOLOv8s)
+                </p>
+                <p className="text-amber-200/90 text-[10px]">
+                  <strong>Physical Measurement Notice:</strong> Depth is not estimated. Single 2D RGB imagery cannot measure physical depth without stereoscopic LiDAR sensors.
+                </p>
+              </div>
             </div>
-            <p className="text-slate-600 leading-relaxed">
-              Automated image segmentation and spatial duplicate clustering ran against
-              active reports. Priority assigned:{' '}
-              <strong className="uppercase text-amber-900 font-bold">
-                {submissionSuccess.priority}
-              </strong>
-              .
-            </p>
-            <span className="text-[10px] text-amber-700 block font-mono">
-              Note: This assessment is simulated for prototype demonstration.
-            </span>
-          </div>
+          ) : (
+            <div className="p-4 rounded-xl bg-slate-100 border border-slate-200 text-left max-w-md mx-auto text-xs space-y-1">
+              <div className="flex items-center gap-2">
+                <Info className="h-4 w-4 text-slate-500" />
+                <span className="font-bold text-slate-800">Manual Citizen Grievance</span>
+              </div>
+              <p className="text-slate-600">
+                Filed as a citizen-submitted complaint. Real AI inference was unavailable at submission time; no artificial scores were fabricated.
+              </p>
+            </div>
+          )}
 
           <div className="flex flex-wrap items-center justify-center gap-3 pt-4">
             <Button
@@ -251,18 +358,18 @@ export const ReportPage: React.FC = () => {
           Report a Bengaluru Pothole or Road Defect
         </h1>
         <p className="text-xs sm:text-sm text-slate-500 mt-1">
-          Upload photo evidence, pinpoint coordinates, and provide road details for municipal
-          verification.
+          Upload photo evidence, run real-time YOLOv8 defect detection, pinpoint coordinates, and lodge civic complaints.
         </p>
       </div>
 
-      {/* Simulated AI disclaimer alert */}
-      <div className="p-4 rounded-xl border border-amber-200 bg-amber-50/70 flex items-start gap-3 text-xs text-amber-900">
-        <Info className="h-4.5 w-4.5 text-amber-600 shrink-0 mt-0.5" />
+      {/* Model & Accuracy Transparency Notice */}
+      <div className="p-4 rounded-xl border border-blue-200 bg-blue-50/70 flex items-start gap-3 text-xs text-blue-950">
+        <Info className="h-4.5 w-4.5 text-blue-600 shrink-0 mt-0.5" />
         <div className="leading-relaxed">
-          <strong>Simulated AI & Duplicate Detection Notice:</strong> In this Phase 1 prototype,
-          image defect scoring and spatial duplicate detection are simulated in client memory. No
-          real civic complaint is transmitted to live municipal authorities.
+          <strong>Real Computer Vision Active:</strong> Uploaded road images are analyzed by a real fine-tuned YOLOv8 model (<code className="font-mono bg-blue-100 px-1 py-0.5 rounded text-[11px]">Samdutse/pothole-yolov8</code>) on the FastAPI backend.
+          <span className="block mt-1 text-slate-600">
+            <strong>Depth Limitation:</strong> Single-lens 2D RGB imagery identifies bounding boxes and confidence scores only. Depth cannot be measured without LiDAR or stereoscopic depth sensors.
+          </span>
         </div>
       </div>
 
@@ -271,7 +378,7 @@ export const ReportPage: React.FC = () => {
         {/* Step 1: Image Upload */}
         <Card>
           <CardHeader>
-            <CardTitle>1. Road Photograph & Visual Evidence</CardTitle>
+            <CardTitle>1. Road Photograph & Real YOLOv8 AI Analysis</CardTitle>
           </CardHeader>
           <CardContent>
             <ImageUploader
@@ -279,6 +386,10 @@ export const ReportPage: React.FC = () => {
               imagePreviewUrl={imagePreviewUrl}
               onImageSelected={handleImageSelected}
               error={errors.image}
+              isDetecting={isDetecting}
+              detectionResult={detectionResult}
+              detectionError={detectionError}
+              onRetryDetection={handleRetryDetection}
             />
           </CardContent>
         </Card>
@@ -347,7 +458,7 @@ export const ReportPage: React.FC = () => {
               </label>
               <textarea
                 rows={3}
-                placeholder="Describe hazard: crater depth, traffic slowdowns, water pooling, two-wheeler risk..."
+                placeholder="Describe hazard: road crater, traffic slowdowns, water pooling, two-wheeler risk..."
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 className="w-full text-xs sm:text-sm bg-slate-50 border border-slate-300 rounded-lg p-2.5 focus:ring-2 focus:ring-slate-900 focus:bg-white focus:outline-none"
@@ -357,17 +468,17 @@ export const ReportPage: React.FC = () => {
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div>
                 <label className="text-xs font-semibold text-slate-700 block mb-1">
-                  Estimated Hazard Priority
+                  Hazard Priority (Auto-suggested by AI)
                 </label>
                 <select
                   value={priority}
                   onChange={(e) => setPriority(e.target.value as ReportPriority)}
                   className="w-full text-xs sm:text-sm bg-slate-50 border border-slate-300 rounded-lg p-2.5 focus:ring-2 focus:ring-slate-900 focus:bg-white focus:outline-none font-medium text-slate-800"
                 >
-                  <option value="critical">Critical (Accident hazard / deep crater)</option>
+                  <option value="critical">Critical (Accident hazard / severe defect)</option>
                   <option value="high">High (Heavy traffic impact)</option>
                   <option value="medium">Medium (Moderate road depression)</option>
-                  <option value="low">Low (Surface erosion / small hole)</option>
+                  <option value="low">Low (Surface erosion / minor wear)</option>
                 </select>
               </div>
 
@@ -403,8 +514,7 @@ export const ReportPage: React.FC = () => {
         {/* Submit Actions */}
         <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-2">
           <p className="text-xs text-slate-500">
-            Submission will trigger client-side spatial duplicate check against active Bengaluru
-            reports.
+            Submission persists defect report and executes spatial clustering against active BBMP complaints.
           </p>
 
           <div className="flex items-center gap-3 w-full sm:w-auto">
@@ -419,7 +529,7 @@ export const ReportPage: React.FC = () => {
             <Button
               type="submit"
               variant="primary"
-              isLoading={isSubmitting}
+              isLoading={isSubmitting || isDetecting}
               leftIcon={<Send className="h-4 w-4 text-amber-400" />}
               className="w-full sm:w-auto font-bold text-sm shadow-sm"
             >
